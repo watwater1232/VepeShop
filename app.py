@@ -264,7 +264,7 @@ def get_stats():
 @app.route("/")
 def index():
     """Serve React app"""
-    return send_from_directory(app.static_folder, "index.html")
+    return send_from_directory(app.static_folder, "index_flask.html")
 
 @app.route("/<path:path>")
 def static_files(path):
@@ -618,3 +618,4 @@ if __name__ == "__main__":
     print(f"👑 Admin IDs: {ADMIN_IDS}")
     
     app.run(host="0.0.0.0", port=port, debug=debug)
+
