@@ -1,676 +1,969 @@
-import React, { useState, useEffect } from 'react';
-import { ShoppingCart, X, Plus, Minus, Sun, Moon, Package, User, Settings } from 'lucide-react';
-
-const API_URL = "https://vepeshop.onrender.com";
-const ADMIN_IDS = new Set([1286638668]);
-
-const VapeShopApp = () => {
-  const [currentTab, setCurrentTab] = useState('catalog');
-  const [currentCategory, setCurrentCategory] = useState('liquids');
-  const [products, setProducts] = useState([]);
-  const [cart, setCart] = useState([]);
-  const [isDarkTheme, setIsDarkTheme] = useState(true);
-  const [userData, setUserData] = useState({
-    id: 1,
-    username: 'user',
-    referrals: [],
-    bonus: 0,
-    isAdmin: false,
-    referralCode: 'REF001'
-  });
-  const [showModal, setShowModal] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [modalQuantity, setModalQuantity] = useState(1);
-
-  useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.ready();
-      tg.expand();
-      
-      const user = tg.initDataUnsafe?.user;
-      if (user && ADMIN_IDS.has(user.id)) {
-        setUserData(prev => ({ ...prev, isAdmin: true, id: user.id, username: user.username }));
-      }
-    }
-    loadProducts();
-  }, []);
-
-  const loadProducts = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/products`);
-      const data = await response.json();
-      setProducts(data);
-    } catch (error) {
-      console.error('Failed to load products:', error);
-    }
-  };
-
-  const addToCart = (productId) => {
-    const product = products.find(p => p.id === productId);
-    if (!product || product.stock < modalQuantity) {
-      showNotification('Недостаточно товара на складе!');
-      return;
-    }
-
-    const existingItem = cart.find(item => item.id === productId);
-    if (existingItem) {
-      setCart(cart.map(item => 
-        item.id === productId 
-          ? { ...item, quantity: item.quantity + modalQuantity }
-          : item
-      ));
-    } else {
-      setCart([...cart, {
-        id: productId,
-        name: product.name,
-        price: product.price,
-        quantity: modalQuantity,
-        emoji: product.emoji
-      }]);
-    }
-    
-    setShowModal('');
-    setModalQuantity(1);
-    showNotification(`${product.name} добавлен в корзину!`);
-    
-    if (window.Telegram?.WebApp?.HapticFeedback) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
-    }
-  };
-
-  const removeFromCart = (productId) => {
-    const item = cart.find(item => item.id === productId);
-    setCart(cart.filter(item => item.id !== productId));
-    if (item) showNotification(`${item.name} удален из корзины`);
-  };
-
-  const checkout = async () => {
-    if (cart.length === 0) {
-      showNotification('Корзина пуста!');
-      return;
-    }
-    
-    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const order = {
-      userId: userData.id,
-      items: cart,
-      total: total,
-      status: 'pending'
-    };
-    
-    try {
-      const response = await fetch(`${API_URL}/api/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(order)
-      });
-      
-      if (response.ok) {
-        setProducts(products.map(product => {
-          const cartItem = cart.find(item => item.id === product.id);
-          if (cartItem) {
-            return { ...product, stock: Math.max(0, product.stock - cartItem.quantity) };
-          }
-          return product;
-        }));
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vape Shop</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        setCart([]);
-        setShowModal('');
-        showNotification('Заказ успешно оформлен!');
-        
-        if (window.Telegram?.WebApp?.HapticFeedback) {
-          window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e293b 0%, #581c87 50%, #3730a3 100%);
+            color: white;
+            min-height: 100vh;
+            transition: all 0.3s ease;
         }
-      }
-    } catch (error) {
-      showNotification('Ошибка при оформлении заказа');
-    }
-  };
-
-  const showNotification = (message) => {
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.showAlert(message);
-    } else {
-      alert(message);
-    }
-  };
-
-  const categories = [
-    { id: 'liquids', name: 'Жидкости' },
-    { id: 'cartridges', name: 'Картриджи' },
-    { id: 'pods', name: 'Поды' },
-    { id: 'devices', name: 'Устройства' }
-  ];
-
-  const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const cartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-
-  return (
-    <div className={`min-h-screen transition-all duration-300 ${
-      isDarkTheme 
-        ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-violet-800' 
-        : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
-    }`}>
-      <div className="max-w-md mx-auto min-h-screen relative">
         
-        {/* Modern Header */}
-        <div className={`relative overflow-hidden ${
-          isDarkTheme 
-            ? 'bg-black/20 backdrop-blur-xl border-b border-white/10' 
-            : 'bg-white/40 backdrop-blur-xl border-b border-black/10'
-        }`}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className={`text-3xl font-black tracking-tight ${
-                  isDarkTheme ? 'text-white' : 'text-gray-900'
-                } mb-1`}>
-                  VAPE SHOP
-                </h1>
-                <p className={`text-sm font-medium ${
-                  isDarkTheme ? 'text-purple-200' : 'text-purple-600'
-                }`}>
-                  Премиум качество • Быстрая доставка
-                </p>
-              </div>
-              <button
-                onClick={() => setIsDarkTheme(!isDarkTheme)}
-                className={`p-3 rounded-2xl transition-all duration-300 hover:scale-110 ${
-                  isDarkTheme 
-                    ? 'bg-white/10 hover:bg-white/20' 
-                    : 'bg-black/10 hover:bg-black/20'
-                }`}
-              >
-                {isDarkTheme ? 
-                  <Sun className="w-6 h-6 text-yellow-400" /> : 
-                  <Moon className="w-6 h-6 text-purple-600" />
-                }
-              </button>
-            </div>
-          </div>
-          
-          {/* Floating nav */}
-          <div className={`mx-4 mb-4 flex rounded-2xl p-1 ${
-            isDarkTheme 
-              ? 'bg-white/10 backdrop-blur-xl' 
-              : 'bg-white/60 backdrop-blur-xl'
-          }`}>
-            <button
-              onClick={() => setCurrentTab('catalog')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold transition-all duration-300 ${
-                currentTab === 'catalog'
-                  ? isDarkTheme
-                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-xl'
-                    : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-xl'
-                  : isDarkTheme
-                    ? 'text-white/70 hover:text-white hover:bg-white/10'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-black/5'
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              Каталог
-            </button>
-            <button
-              onClick={() => setCurrentTab('profile')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold transition-all duration-300 ${
-                currentTab === 'profile'
-                  ? isDarkTheme
-                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-xl'
-                    : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-xl'
-                  : isDarkTheme
-                    ? 'text-white/70 hover:text-white hover:bg-white/10'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-black/5'
-              }`}
-            >
-              <User className="w-4 h-4" />
-              Профиль
-            </button>
-            {userData.isAdmin && (
-              <button
-                onClick={() => setCurrentTab('admin')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold transition-all duration-300 ${
-                  currentTab === 'admin'
-                    ? isDarkTheme
-                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-xl'
-                      : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-xl'
-                    : isDarkTheme
-                      ? 'text-white/70 hover:text-white hover:bg-white/10'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-black/5'
-                }`}
-              >
-                <Settings className="w-4 h-4" />
-                Админ
-              </button>
-            )}
-          </div>
+        body.light {
+            background: linear-gradient(135deg, #f1f5f9 0%, #ddd6fe 50%, #e0e7ff 100%);
+            color: #1e293b;
+        }
+        
+        .container {
+            max-width: 420px;
+            margin: 0 auto;
+            min-height: 100vh;
+            position: relative;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            padding: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .light .header {
+            background: rgba(255, 255, 255, 0.8);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            font-weight: 900;
+            margin-bottom: 4px;
+        }
+        
+        .header p {
+            opacity: 0.8;
+            font-size: 14px;
+        }
+        
+        .theme-btn {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            color: currentColor;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .theme-btn:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .nav {
+            display: flex;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 16px;
+            border-radius: 16px;
+            padding: 4px;
+        }
+        
+        .light .nav {
+            background: rgba(255, 255, 255, 0.6);
+        }
+        
+        .nav-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 12px;
+            background: transparent;
+            color: currentColor;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .nav-btn.active {
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.3);
+        }
+        
+        .light .nav-btn.active {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        }
+        
+        .content {
+            padding: 16px;
+            padding-bottom: 100px;
+        }
+        
+        .category-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        
+        .category-btn {
+            padding: 16px;
+            border-radius: 16px;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            color: currentColor;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+        }
+        
+        .light .category-btn {
+            background: rgba(255, 255, 255, 0.6);
+        }
+        
+        .category-btn:hover, .category-btn.active {
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            color: white;
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.3);
+        }
+        
+        .light .category-btn:hover, .light .category-btn.active {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        }
+        
+        .category-btn .emoji {
+            font-size: 24px;
+        }
+        
+        .products-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        
+        .product-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .light .product-card {
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .product-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
+        }
+        
+        .product-emoji {
+            font-size: 48px;
+            margin-bottom: 12px;
+            display: block;
+        }
+        
+        .product-name {
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .product-price {
+            color: #10b981;
+            font-weight: 800;
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+        
+        .product-stock {
+            font-size: 12px;
+            opacity: 0.8;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 8px;
+            border-radius: 8px;
+            display: inline-block;
+        }
+        
+        .cart-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            border-radius: 50%;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .cart-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 12px 35px rgba(139, 92, 246, 0.6);
+        }
+        
+        .cart-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ef4444;
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #1e293b 0%, #581c87 100%);
+            border-radius: 24px;
+            padding: 24px;
+            width: 100%;
+            max-width: 400px;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .light .modal-content {
+            background: linear-gradient(135deg, #f1f5f9 0%, #ddd6fe 100%);
+            color: #1e293b;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .modal-title {
+            font-size: 24px;
+            font-weight: 800;
+        }
+        
+        .close-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            color: currentColor;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s ease;
+        }
+        
+        .close-btn:hover {
+            transform: rotate(90deg);
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border: none;
+            padding: 16px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin: 8px 0;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
+        }
+        
+        .btn:disabled {
+            background: #6b7280;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .quantity-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            margin: 24px 0;
+        }
+        
+        .quantity-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            color: currentColor;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+        }
+        
+        .quantity-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+        
+        .quantity-display {
+            font-size: 28px;
+            font-weight: 800;
+            min-width: 40px;
+            text-align: center;
+        }
+        
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .cart-item-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+        
+        .cart-item-emoji {
+            font-size: 24px;
+        }
+        
+        .cart-item-details h4 {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .cart-item-details p {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        .remove-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: #ef4444;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s ease;
+        }
+        
+        .remove-btn:hover {
+            transform: scale(1.1);
+            background: #dc2626;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 48px 16px;
+            opacity: 0.7;
+        }
+        
+        .empty-state .emoji {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+        
+        .profile-card {
+            background: linear-gradient(135deg, #10b981, #059669);
+            border-radius: 20px;
+            padding: 24px;
+            text-align: center;
+            margin-bottom: 24px;
+            color: white;
+        }
+        
+        .referral-code {
+            font-size: 24px;
+            font-weight: 800;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin: 16px 0;
+            display: inline-block;
+            letter-spacing: 2px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 16px;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            display: block;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 4px;
+        }
+        
+        .hidden { display: none !important; }
+        .show { display: block !important; }
+    </style>
+</head>
+<body id="body">
+    <div class="container">
+        <div class="header">
+            <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">🌙</button>
+            <h1>VAPE SHOP</h1>
+            <p>Премиум качество • Быстрая доставка</p>
         </div>
 
-        {/* Content */}
-        <div className="p-4 pb-24">
-          {/* Catalog */}
-          {currentTab === 'catalog' && (
-            <div>
-              {/* Category Grid */}
-              <div className="grid grid-cols-2 gap-3 mb-6">
-                {categories.map((category) => (
-                  <button
-                    key={category.id}
-                    onClick={() => setCurrentCategory(category.id)}
-                    className={`flex items-center gap-3 p-4 rounded-2xl font-semibold transition-all duration-300 ${
-                      currentCategory === category.id
-                        ? isDarkTheme
-                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-xl scale-105'
-                          : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-xl scale-105'
-                        : isDarkTheme
-                          ? 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white hover:scale-105'
-                          : 'bg-white/40 text-gray-700 hover:bg-white/60 hover:text-gray-900 hover:scale-105'
-                    }`}
-                  >
-                    <span className="text-2xl">{
-                      category.id === 'liquids' ? '🧪' :
-                      category.id === 'cartridges' ? '💨' :
-                      category.id === 'pods' ? '🔥' : '📱'
-                    }</span>
-                    <span className="text-sm font-bold">{category.name}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Products */}
-              <div className="grid grid-cols-2 gap-4">
-                {products
-                  .filter(product => product.category === currentCategory)
-                  .map((product) => (
-                    <div
-                      key={product.id}
-                      onClick={() => {
-                        setSelectedProduct(product);
-                        setShowModal('product');
-                      }}
-                      className={`group cursor-pointer rounded-3xl p-5 transition-all duration-500 hover:scale-105 ${
-                        isDarkTheme 
-                          ? 'bg-white/10 backdrop-blur-xl hover:bg-white/20 border border-white/20 hover:shadow-2xl hover:shadow-purple-500/25' 
-                          : 'bg-white/60 backdrop-blur-xl hover:bg-white/80 border border-white/40 hover:shadow-2xl hover:shadow-blue-500/25'
-                      }`}
-                    >
-                      <div className="text-center">
-                        <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">
-                          {product.emoji}
-                        </div>
-                        <h3 className={`font-bold text-sm mb-3 leading-tight ${
-                          isDarkTheme ? 'text-white' : 'text-gray-900'
-                        }`}>
-                          {product.name}
-                        </h3>
-                        <div className={`font-black text-lg mb-3 ${
-                          isDarkTheme ? 'text-purple-300' : 'text-purple-600'
-                        }`}>
-                          {product.price.toLocaleString()}₽
-                        </div>
-                        <div className={`text-xs font-medium px-3 py-2 rounded-full ${
-                          product.stock > 5
-                            ? isDarkTheme 
-                              ? 'bg-green-500/20 text-green-300' 
-                              : 'bg-green-100 text-green-700'
-                            : isDarkTheme
-                              ? 'bg-orange-500/20 text-orange-300'
-                              : 'bg-orange-100 text-orange-700'
-                        }`}>
-                          {product.stock > 0 ? `${product.stock} шт.` : 'Нет в наличии'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
-
-          {/* Profile */}
-          {currentTab === 'profile' && (
-            <div className="space-y-6">
-              {/* Referral */}
-              <div className={`rounded-3xl p-6 ${
-                isDarkTheme 
-                  ? 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 backdrop-blur-xl border border-white/20' 
-                  : 'bg-gradient-to-br from-blue-500/10 to-purple-500/10 backdrop-blur-xl border border-white/40'
-              }`}>
-                <h3 className={`text-xl font-bold mb-4 ${
-                  isDarkTheme ? 'text-white' : 'text-gray-900'
-                }`}>
-                  Реферальная программа
-                </h3>
-                <div className={`rounded-2xl p-4 text-center mb-4 ${
-                  isDarkTheme ? 'bg-white/10' : 'bg-white/40'
-                }`}>
-                  <p className={`text-sm mb-2 ${
-                    isDarkTheme ? 'text-white/70' : 'text-gray-600'
-                  }`}>
-                    Ваш код:
-                  </p>
-                  <div className={`text-2xl font-black tracking-wider ${
-                    isDarkTheme ? 'text-purple-300' : 'text-purple-600'
-                  }`}>
-                    {userData.referralCode}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center">
-                    <div className={`text-3xl font-black ${
-                      isDarkTheme ? 'text-white' : 'text-gray-900'
-                    }`}>
-                      {userData.referrals.length}
-                    </div>
-                    <div className={`text-sm font-medium ${
-                      isDarkTheme ? 'text-white/70' : 'text-gray-600'
-                    }`}>
-                      Друзей
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-3xl font-black text-green-500">
-                      {userData.bonus.toLocaleString()}₽
-                    </div>
-                    <div className={`text-sm font-medium ${
-                      isDarkTheme ? 'text-white/70' : 'text-gray-600'
-                    }`}>
-                      Бонусы
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Orders */}
-              <div className={`rounded-3xl p-6 ${
-                isDarkTheme 
-                  ? 'bg-white/10 backdrop-blur-xl border border-white/20' 
-                  : 'bg-white/60 backdrop-blur-xl border border-white/40'
-              }`}>
-                <h3 className={`text-xl font-bold mb-4 ${
-                  isDarkTheme ? 'text-white' : 'text-gray-900'
-                }`}>
-                  История заказов
-                </h3>
-                <div className={`text-center py-8 ${
-                  isDarkTheme ? 'text-white/50' : 'text-gray-500'
-                }`}>
-                  <Package className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                  <p className="font-medium">Пока нет заказов</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Admin */}
-          {currentTab === 'admin' && userData.isAdmin && (
-            <div className="space-y-6">
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'Пользователи', value: '150', color: 'blue' },
-                  { label: 'Заказы', value: '23', color: 'green' },
-                  { label: 'Выручка', value: '45K₽', color: 'purple' }
-                ].map((stat, index) => (
-                  <div key={index} className={`rounded-2xl p-4 text-center ${
-                    isDarkTheme 
-                      ? 'bg-white/10 backdrop-blur-xl border border-white/20' 
-                      : 'bg-white/60 backdrop-blur-xl border border-white/40'
-                  }`}>
-                    <div className={`text-2xl font-black ${
-                      stat.color === 'blue' ? 'text-blue-500' :
-                      stat.color === 'green' ? 'text-green-500' : 'text-purple-500'
-                    }`}>
-                      {stat.value}
-                    </div>
-                    <div className={`text-xs font-medium ${
-                      isDarkTheme ? 'text-white/70' : 'text-gray-600'
-                    }`}>
-                      {stat.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Product Management */}
-              <div className={`rounded-3xl p-6 ${
-                isDarkTheme 
-                  ? 'bg-white/10 backdrop-blur-xl border border-white/20' 
-                  : 'bg-white/60 backdrop-blur-xl border border-white/40'
-              }`}>
-                <h3 className={`text-xl font-bold mb-4 ${
-                  isDarkTheme ? 'text-white' : 'text-gray-900'
-                }`}>
-                  Управление товарами
-                </h3>
-                <button className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-4 rounded-2xl font-bold mb-4 transition-all duration-300 hover:scale-105 hover:shadow-xl">
-                  Добавить товар
-                </button>
-                <div className="space-y-3">
-                  {products.slice(0, 3).map((product) => (
-                    <div key={product.id} className={`flex items-center justify-between p-4 rounded-2xl ${
-                      isDarkTheme ? 'bg-white/5' : 'bg-white/40'
-                    }`}>
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{product.emoji}</span>
-                        <div>
-                          <div className={`font-bold text-sm ${
-                            isDarkTheme ? 'text-white' : 'text-gray-900'
-                          }`}>
-                            {product.name}
-                          </div>
-                          <div className={`text-xs ${
-                            isDarkTheme ? 'text-white/70' : 'text-gray-600'
-                          }`}>
-                            {product.price.toLocaleString()}₽ • {product.stock} шт.
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-110 ${
-                          isDarkTheme ? 'bg-white/10 text-white/70 hover:text-white' : 'bg-white/60 text-gray-600 hover:text-gray-900'
-                        }`}>
-                          <Settings className="w-4 h-4" />
-                        </button>
-                        <button className="w-10 h-10 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-110">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+        <div class="nav">
+            <button class="nav-btn active" onclick="showTab('catalog')" data-tab="catalog">
+                📦 Каталог
+            </button>
+            <button class="nav-btn" onclick="showTab('profile')" data-tab="profile">
+                👤 Профиль
+            </button>
+            <button class="nav-btn hidden" onclick="showTab('admin')" data-tab="admin" id="adminTab">
+                ⚙️ Админ
+            </button>
         </div>
 
-        {/* Floating Cart Button */}
-        <button
-          onClick={() => setShowModal('cart')}
-          className="fixed bottom-6 right-6 w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-110 hover:shadow-purple-500/50 z-50"
-        >
-          <ShoppingCart className="text-white w-6 h-6" />
-          {cartItemsCount > 0 && (
-            <div className="absolute -top-2 -right-2 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold shadow-xl">
-              {cartItemsCount}
+        <div class="content">
+            <!-- Каталог -->
+            <div id="catalog" class="tab-content">
+                <div class="category-grid">
+                    <button class="category-btn active" onclick="showCategory('liquids')" data-category="liquids">
+                        <span class="emoji">🧪</span>
+                        <span>Жидкости</span>
+                    </button>
+                    <button class="category-btn" onclick="showCategory('cartridges')" data-category="cartridges">
+                        <span class="emoji">💨</span>
+                        <span>Картриджи</span>
+                    </button>
+                    <button class="category-btn" onclick="showCategory('pods')" data-category="pods">
+                        <span class="emoji">🔥</span>
+                        <span>Поды</span>
+                    </button>
+                    <button class="category-btn" onclick="showCategory('devices')" data-category="devices">
+                        <span class="emoji">📱</span>
+                        <span>Устройства</span>
+                    </button>
+                </div>
+
+                <div class="products-grid" id="productsGrid">
+                    <!-- Products will be loaded here -->
+                </div>
             </div>
-          )}
+
+            <!-- Профиль -->
+            <div id="profile" class="tab-content hidden">
+                <div class="profile-card">
+                    <h3>💎 РЕФЕРАЛЬНАЯ ПРОГРАММА</h3>
+                    <p>Ваш реферальный код:</p>
+                    <div class="referral-code" id="referralCode">REF001</div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-value" id="friendsCount">0</span>
+                            <div class="stat-label">Друзей</div>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="bonusAmount">0₽</span>
+                            <div class="stat-label">Бонусы</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background: rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 24px;">
+                    <h3>📋 История заказов</h3>
+                    <div class="empty-state">
+                        <div class="emoji">📦</div>
+                        <p>Пока нет заказов</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Админ -->
+            <div id="admin" class="tab-content hidden">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px;">
+                    <div style="background: rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 20px; text-align: center;">
+                        <div style="font-size: 24px; font-weight: 800; color: #3b82f6;">150</div>
+                        <div style="font-size: 12px; opacity: 0.8;">Пользователи</div>
+                    </div>
+                    <div style="background: rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 20px; text-align: center;">
+                        <div style="font-size: 24px; font-weight: 800; color: #10b981;">23</div>
+                        <div style="font-size: 12px; opacity: 0.8;">Заказы</div>
+                    </div>
+                    <div style="background: rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 20px; text-align: center;">
+                        <div style="font-size: 24px; font-weight: 800; color: #8b5cf6;">45K₽</div>
+                        <div style="font-size: 12px; opacity: 0.8;">Выручка</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="cart-fab" onclick="showCart()">
+            🛒
+            <span class="cart-badge hidden" id="cartBadge">0</span>
         </button>
-
-        {/* Product Modal */}
-        {showModal === 'product' && selectedProduct && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className={`w-full max-w-sm rounded-3xl p-6 ${
-              isDarkTheme 
-                ? 'bg-gray-900/95 backdrop-blur-xl border border-white/20' 
-                : 'bg-white/95 backdrop-blur-xl border border-black/20'
-            } shadow-2xl`}>
-              <div className="flex justify-between items-center mb-6">
-                <h3 className={`text-2xl font-black ${isDarkTheme ? 'text-white' : 'text-gray-900'}`}>
-                  Товар
-                </h3>
-                <button
-                  onClick={() => setShowModal('')}
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 ${
-                    isDarkTheme ? 'bg-white/10 text-white/70 hover:text-white' : 'bg-black/10 text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              
-              <div className="text-center mb-6">
-                <div className="text-6xl mb-4">{selectedProduct.emoji}</div>
-                <h3 className={`text-xl font-bold mb-3 ${isDarkTheme ? 'text-white' : 'text-gray-900'}`}>
-                  {selectedProduct.name}
-                </h3>
-                <div className={`text-2xl font-black mb-4 ${
-                  isDarkTheme ? 'text-purple-300' : 'text-purple-600'
-                }`}>
-                  {selectedProduct.price.toLocaleString()}₽
-                </div>
-                <p className={`leading-relaxed mb-6 ${
-                  isDarkTheme ? 'text-white/70' : 'text-gray-600'
-                }`}>
-                  {selectedProduct.description}
-                </p>
-                <div className={`inline-block px-4 py-2 rounded-full font-medium ${
-                  selectedProduct.stock > 5
-                    ? isDarkTheme 
-                      ? 'bg-green-500/20 text-green-300' 
-                      : 'bg-green-100 text-green-700'
-                    : isDarkTheme
-                      ? 'bg-orange-500/20 text-orange-300'
-                      : 'bg-orange-100 text-orange-700'
-                }`}>
-                  В наличии: {selectedProduct.stock} шт.
-                </div>
-              </div>
-              
-              {/* Quantity */}
-              <div className="flex items-center justify-center gap-6 mb-6">
-                <button
-                  onClick={() => setModalQuantity(Math.max(1, modalQuantity - 1))}
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all duration-300 hover:scale-110 ${
-                    isDarkTheme ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-black/10 text-gray-900 hover:bg-black/20'
-                  }`}
-                >
-                  <Minus className="w-5 h-5" />
-                </button>
-                <div className={`text-3xl font-black ${isDarkTheme ? 'text-white' : 'text-gray-900'}`}>
-                  {modalQuantity}
-                </div>
-                <button
-                  onClick={() => setModalQuantity(Math.min(10, modalQuantity + 1))}
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all duration-300 hover:scale-110 ${
-                    isDarkTheme ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-black/10 text-gray-900 hover:bg-black/20'
-                  }`}
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
-              </div>
-              
-              <button
-                onClick={() => addToCart(selectedProduct.id)}
-                disabled={selectedProduct.stock === 0}
-                className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 ${
-                  selectedProduct.stock === 0
-                    ? 'bg-gray-500 text-white/50 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:scale-105 hover:shadow-xl'
-                }`}
-              >
-                {selectedProduct.stock === 0 ? 'Нет в наличии' : 'Добавить в корзину'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Cart Modal */}
-        {showModal === 'cart' && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className={`w-full max-w-sm max-h-[85vh] overflow-y-auto rounded-3xl p-6 ${
-              isDarkTheme 
-                ? 'bg-gray-900/95 backdrop-blur-xl border border-white/20' 
-                : 'bg-white/95 backdrop-blur-xl border border-black/20'
-            } shadow-2xl`}>
-              <div className="flex justify-between items-center mb-6">
-                <h3 className={`text-2xl font-black ${isDarkTheme ? 'text-white' : 'text-gray-900'}`}>
-                  Корзина
-                </h3>
-                <button
-                  onClick={() => setShowModal('')}
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 ${
-                    isDarkTheme ? 'bg-white/10 text-white/70 hover:text-white' : 'bg-black/10 text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              
-              {cart.length === 0 ? (
-                <div className={`text-center py-12 ${isDarkTheme ? 'text-white/50' : 'text-gray-500'}`}>
-                  <ShoppingCart className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                  <p className="text-lg font-medium mb-2">Корзина пуста</p>
-                  <p className="text-sm opacity-70">Добавьте товары из каталога</p>
-                </div>
-              ) : (
-                <div>
-                  <div className="space-y-4 mb-6">
-                    {cart.map((item) => (
-                      <div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl ${
-                        isDarkTheme ? 'bg-white/5' : 'bg-white/60'
-                      }`}>
-                        <div className="flex items-center gap-3 flex-1">
-                          <span className="text-2xl">{item.emoji}</span>
-                          <div>
-                            <div className={`font-bold text-sm ${
-                              isDarkTheme ? 'text-white' : 'text-gray-900'
-                            }`}>
-                              {item.name}
-                            </div>
-                            <div className={`text-xs ${
-                              isDarkTheme ? 'text-white/70' : 'text-gray-600'
-                            }`}>
-                              {item.price.toLocaleString()}₽ × {item.quantity} = {(item.price * item.quantity).toLocaleString()}₽
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="w-10 h-10 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-110"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  <div className={`border-t pt-4 mb-6 ${
-                    isDarkTheme ? 'border-white/20' : 'border-black/20'
-                  }`}>
-                    <div className={`flex justify-between items-center text-xl font-black ${
-                      isDarkTheme ? 'text-white' : 'text-gray-900'
-                    }`}>
-                      <span>Итого:</span>
-                      <span className={isDarkTheme ? 'text-purple-300' : 'text-purple-600'}>
-                        {cartTotal.toLocaleString()}₽
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={checkout}
-                    className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-4 rounded-2xl font-bold transition-all duration-300 hover:scale-105 hover:shadow-xl"
-                  >
-                    Оформить заказ
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
     </div>
-  );
-};
 
-export default VapeShopApp;
+    <!-- Модальные окна -->
+    <div id="productModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Товар</h3>
+                <button class="close-btn" onclick="closeModal('productModal')">×</button>
+            </div>
+            <div id="productDetails"></div>
+        </div>
+    </div>
+
+    <div id="cartModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">🛒 Корзина</h3>
+                <button class="close-btn" onclick="closeModal('cartModal')">×</button>
+            </div>
+            <div id="cartItems"></div>
+            <div style="border-top: 1px solid rgba(255, 255, 255, 0.2); padding-top: 16px; margin-top: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 20px; font-weight: 800; margin-bottom: 16px;">
+                    <span>Итого:</span>
+                    <span style="color: #10b981;" id="cartTotal">0₽</span>
+                </div>
+                <button class="btn" onclick="checkout()" id="checkoutBtn">💳 Оформить заказ</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Глобальные переменные
+        let products = [];
+        let cart = [];
+        let currentCategory = 'liquids';
+        let selectedProduct = null;
+        let modalQuantity = 1;
+        let userData = { id: 1, username: 'user', referrals: [], bonus: 0, isAdmin: false, referralCode: 'REF001' };
+        const ADMIN_IDS = [1286638668];
+        const API_URL = '';
+
+        // Инициализация
+        async function init() {
+            if (window.Telegram?.WebApp) {
+                const tg = window.Telegram.WebApp;
+                tg.ready();
+                tg.expand();
+                
+                const user = tg.initDataUnsafe?.user;
+                if (user && ADMIN_IDS.includes(user.id)) {
+                    userData.isAdmin = true;
+                    userData.id = user.id;
+                    userData.username = user.username;
+                    document.getElementById('adminTab').classList.remove('hidden');
+                }
+            }
+            
+            await loadProducts();
+            updateCartBadge();
+        }
+
+        // API функции
+        async function loadProducts() {
+            try {
+                const response = await fetch(`${API_URL}/api/products`);
+                products = await response.json();
+                renderProducts();
+            } catch (error) {
+                console.error('Ошибка загрузки товаров:', error);
+            }
+        }
+
+        // Управление темой
+        function toggleTheme() {
+            const body = document.getElementById('body');
+            const btn = document.getElementById('themeBtn');
+            
+            if (body.classList.contains('light')) {
+                body.classList.remove('light');
+                btn.textContent = '🌙';
+            } else {
+                body.classList.add('light');
+                btn.textContent = '☀️';
+            }
+        }
+
+        // Навигация
+        function showTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(tab).classList.remove('hidden');
+            document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+        }
+
+        function showCategory(category) {
+            currentCategory = category;
+            
+            document.querySelectorAll('.category-btn').forEach(el => el.classList.remove('active'));
+            document.querySelector(`[data-category="${category}"]`).classList.add('active');
+            
+            renderProducts();
+        }
+
+        // Рендеринг товаров
+        function renderProducts() {
+            const grid = document.getElementById('productsGrid');
+            const categoryProducts = products.filter(p => p.category === currentCategory);
+            
+            if (categoryProducts.length === 0) {
+                grid.innerHTML = '<div class="empty-state"><div class="emoji">📦</div><p>Товары скоро появятся</p></div>';
+                return;
+            }
+            
+            grid.innerHTML = categoryProducts.map(product => `
+                <div class="product-card" onclick="showProductModal(${product.id})">
+                    <span class="product-emoji">${product.emoji}</span>
+                    <div class="product-name">${product.name}</div>
+                    <div class="product-price">${product.price.toLocaleString()}₽</div>
+                    <div class="product-stock">В наличии: ${product.stock}</div>
+                </div>
+            `).join('');
+        }
+
+        // Модальные окна
+        function showProductModal(productId) {
+            selectedProduct = products.find(p => p.id === productId);
+            modalQuantity = 1;
+            
+            const details = document.getElementById('productDetails');
+            details.innerHTML = `
+                <div style="text-align: center;">
+                    <div style="font-size: 80px; margin-bottom: 20px;">${selectedProduct.emoji}</div>
+                    <h3 style="margin-bottom: 15px; font-size: 20px;">${selectedProduct.name}</h3>
+                    <div style="font-size: 24px; color: #10b981; font-weight: 800; margin-bottom: 15px;">
+                        ${selectedProduct.price.toLocaleString()}₽
+                    </div>
+                    <p style="opacity: 0.9; line-height: 1.5; margin-bottom: 15px;">${selectedProduct.description}</p>
+                    <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 12px; margin-bottom: 25px;">
+                        В наличии: <strong>${selectedProduct.stock} шт.</strong>
+                    </div>
+                </div>
+                
+                <div class="quantity-controls">
+                    <button class="quantity-btn" onclick="changeQuantity(-1)">−</button>
+                    <div class="quantity-display" id="modalQuantity">1</div>
+                    <button class="quantity-btn" onclick="changeQuantity(1)">+</button>
+                </div>
+                
+                <button class="btn" onclick="addToCart()" ${selectedProduct.stock === 0 ? 'disabled' : ''}>
+                    ${selectedProduct.stock === 0 ? '⛔ Нет в наличии' : '🛒 Добавить в корзину'}
+                </button>
+            `;
+            
+            showModal('productModal');
+        }
+
+        function showCart() {
+            const items = document.getElementById('cartItems');
+            const total = document.getElementById('cartTotal');
+            const btn = document.getElementById('checkoutBtn');
+            
+            if (cart.length === 0) {
+                items.innerHTML = '<div class="empty-state"><div class="emoji">🛒</div><p>Корзина пуста</p></div>';
+                total.textContent = '0₽';
+                btn.style.display = 'none';
+            } else {
+                items.innerHTML = cart.map(item => `
+                    <div class="cart-item">
+                        <div class="cart-item-info">
+                            <span class="cart-item-emoji">${item.emoji}</span>
+                            <div class="cart-item-details">
+                                <h4>${item.name}</h4>
+                                <p>${item.price.toLocaleString()}₽ × ${item.quantity} = ${(item.price * item.quantity).toLocaleString()}₽</p>
+                            </div>
+                        </div>
+                        <button class="remove-btn" onclick="removeFromCart(${item.id})">×</button>
+                    </div>
+                `).join('');
+                
+                const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                total.textContent = totalAmount.toLocaleString() + '₽';
+                btn.style.display = 'block';
+            }
+            
+            showModal('cartModal');
+        }
+
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.add('show');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('show');
+        }
+
+        // Корзина
+        function changeQuantity(delta) {
+            modalQuantity = Math.max(1, Math.min(10, modalQuantity + delta));
+            document.getElementById('modalQuantity').textContent = modalQuantity;
+        }
+
+        function addToCart() {
+            if (!selectedProduct || selectedProduct.stock < modalQuantity) {
+                alert('Недостаточно товара на складе!');
+                return;
+            }
+
+            const existingItem = cart.find(item => item.id === selectedProduct.id);
+            if (existingItem) {
+                existingItem.quantity += modalQuantity;
+            } else {
+                cart.push({
+                    id: selectedProduct.id,
+                    name: selectedProduct.name,
+                    price: selectedProduct.price,
+                    quantity: modalQuantity,
+                    emoji: selectedProduct.emoji
+                });
+            }
+
+            updateCartBadge();
+            closeModal('productModal');
+            alert(`${selectedProduct.name} добавлен в корзину!`);
+
+            if (window.Telegram?.WebApp?.HapticFeedback) {
+                window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+            }
+        }
+
+        function removeFromCart(productId) {
+            const item = cart.find(item => item.id === productId);
+            cart = cart.filter(item => item.id !== productId);
+            updateCartBadge();
+            showCart(); // Обновляем отображение корзины
+            if (item) alert(`${item.name} удален из корзины`);
+        }
+
+        function updateCartBadge() {
+            const badge = document.getElementById('cartBadge');
+            const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+            
+            if (totalItems > 0) {
+                badge.textContent = totalItems;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        async function checkout() {
+            if (cart.length === 0) {
+                alert('Корзина пуста!');
+                return;
+            }
+
+            const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const order = {
+                userId: userData.id,
+                items: cart,
+                total: total,
+                status: 'pending'
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/api/orders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(order)
+                });
+
+                if (response.ok) {
+                    // Обновляем остатки товаров
+                    products = products.map(product => {
+                        const cartItem = cart.find(item => item.id === product.id);
+                        if (cartItem) {
+                            return { ...product, stock: Math.max(0, product.stock - cartItem.quantity) };
+                        }
+                        return product;
+                    });
+
+                    cart = [];
+                    updateCartBadge();
+                    renderProducts();
+                    closeModal('cartModal');
+                    alert('Заказ успешно оформлен!');
+
+                    if (window.Telegram?.WebApp?.HapticFeedback) {
+                        window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+                    }
+                }
+            } catch (error) {
+                alert('Ошибка при оформлении заказа');
+            }
+        }
+
+        // Закрытие модальных окон при клике вне их
+        window.addEventListener('click', function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.classList.remove('show');
+            }
+        });
+
+        // Закрытие по ESC
+        window.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                document.querySelectorAll('.modal').forEach(modal => {
+                    modal.classList.remove('show');
+                });
+            }
+        });
+
+        // Telegram WebApp интеграция
+        if (window.Telegram?.WebApp) {
+            const tg = window.Telegram.WebApp;
+            
+            // Обновление главной кнопки
+            function updateMainButton() {
+                if (cart.length > 0) {
+                    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                    tg.MainButton.setText(`Заказать за ${total.toLocaleString()}₽`);
+                    tg.MainButton.show();
+                } else {
+                    tg.MainButton.hide();
+                }
+            }
+
+            // Обработчик главной кнопки
+            tg.onEvent('mainButtonClicked', function() {
+                if (cart.length > 0) {
+                    checkout();
+                }
+            });
+
+            // Обработчик кнопки назад
+            tg.onEvent('backButtonClicked', function() {
+                const openModal = document.querySelector('.modal.show');
+                if (openModal) {
+                    openModal.classList.remove('show');
+                    tg.BackButton.hide();
+                } else {
+                    tg.close();
+                }
+            });
+
+            // Показать/скрыть кнопку назад при открытии модальных окон
+            const originalShowModal = showModal;
+            showModal = function(modalId) {
+                originalShowModal(modalId);
+                tg.BackButton.show();
+            };
+
+            const originalCloseModal = closeModal;
+            closeModal = function(modalId) {
+                originalCloseModal(modalId);
+                const hasOpenModals = document.querySelector('.modal.show');
+                if (!hasOpenModals) {
+                    tg.BackButton.hide();
+                }
+            };
+
+            // Обновлять главную кнопку при изменении корзины
+            const originalUpdateCartBadge = updateCartBadge;
+            updateCartBadge = function() {
+                originalUpdateCartBadge();
+                updateMainButton();
+            };
+
+            // Настройки цветов
+            tg.setHeaderColor('#1e293b');
+            tg.setBackgroundColor('#1e293b');
+        }
+
+        // Запуск приложения
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
